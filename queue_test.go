@@ -11,10 +11,10 @@ var all_send_len = 0
 
 func TestQueue(t *testing.T) {
 	ring := NewQueue()
-	ring.Set("capacity", 1024*1024)
-	ring.Reload()
+	//ring.Set("capacity", 1024*1024)
+	//ring.Reload()
 	log_line1 := "111 testing log data use queueRing 111"
-
+	//log_line1 += log_line1
 	for i := 0; i < 10; i++ {
 		all_send_len += len(log_line1) * 1000
 		go pushMessageToQueue(t, ring, 1000, log_line1)

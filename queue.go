@@ -38,7 +38,7 @@ func NewQueue() *queueRing {
 		pos_write: 0,
 		pos_read:  0,
 		ring:      0,
-		ch_write:  make(chan []int32, 2),
+		ch_write:  make(chan []int32, 4),
 		reader:    &pointer{},
 	}
 	qr.Set("capacity", 0)
@@ -63,7 +63,7 @@ func (qr *queueRing) Set(field string, size int32) *queueRing {
 		qr.capacity = size
 	case "pool":
 		if size <= 0 {
-			size = 20
+			size = 12
 		}
 		qr.pool_size = size
 	case "channle":
@@ -144,7 +144,8 @@ func (qr *queueRing) ReadString(size int32) string {
 
 // get can write size of buffer.
 func (qr *queueRing) getLeftSize() int32 {
-	return qr.capacity - qr.pos_write + qr.ring.get()*qr.capacity - qr.pos_read
+	//return qr.capacity - (qr.pos_write + qr.ring.get()*qr.capacity - qr.pos_read)
+	return qr.capacity*(1^qr.ring.get()) + qr.pos_read - qr.pos_write
 }
 
 // just write data to buffer.
@@ -237,7 +238,7 @@ func (qr *queueRing) allocate(id_size []int32) {
 				return
 			}
 		}
-		time.Sleep(10 * time.Nanosecond)
+		time.Sleep(100 * time.Nanosecond)
 	}
 }
 
@@ -253,7 +254,7 @@ func (qr *queueRing) getWriter(key int32) *pointer {
 			}
 			r++
 		}
-		time.Sleep(500 * time.Nanosecond)
+		time.Sleep(550 * time.Nanosecond)
 	}
 }
 
@@ -262,7 +263,7 @@ func (qr *queueRing) allocateWriter(pit *pointer, id_size []int32) int32 {
 	size := id_size[1]
 	left := qr.getLeftSize()
 	if left < size {
-		test_print_line("[QUEUE_ERROR][ALLOCATE][NOT_ENOUGH_SPACE]", left, size, id_size)
+		test_print_line("[QUEUE_ERROR][ALLOCATE][NOT_ENOUGH_SPACE]", left, size, id_size, qr.pos_write, qr.pos_read, qr.ring)
 		return const_ret_writer_overflow
 	}
 
@@ -404,6 +405,7 @@ type pointer struct {
 	index_end   int32
 	size        int32
 	key         int32 //this is important. it will be used to decide which goroutine can gets the pointer
+	buffer      *bytes.Buffer
 }
 
 func (pit *pointer) getKey() int32 {
