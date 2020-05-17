@@ -10,10 +10,17 @@ import (
 	"time"
 )
 
-const const_splite_serial = 2100000000
+const (
+	const_splite_serial = 2100000000 //
+	const_scope_write   = 1000       //writer pointer can work start now.
+	const_wrter_get_ok  = 1          // get writer ok.
+)
 
 var test_begin = time.Now()
+
 var test_duration time.Duration = 0
+
+//var test_duration int = 0
 
 // ========================================queue define start=============================================
 type queueRing struct {
@@ -29,8 +36,7 @@ type queueRing struct {
 	reader      *pointer   // reader
 	pool_writer []*pointer // written pointers pool.
 	pool_size   int32
-	ch_write    chan []int32 // notice the message of written length to queue.
-	serial_id   severity     // Serial number
+	chan_writer chan uint8 // notice the message of written length to queue.
 }
 
 func NewQueue() *queueRing {
@@ -38,8 +44,9 @@ func NewQueue() *queueRing {
 		pos_write: 0,
 		pos_read:  0,
 		ring:      0,
-		ch_write:  make(chan []int32, 4),
-		reader:    &pointer{},
+		//ch_write:    make(chan []int32, 4),
+		chan_writer: make(chan uint8, 4),
+		reader:      &pointer{},
 	}
 	qr.Set("capacity", 0)
 	qr.Set("pool", 0)
@@ -63,16 +70,16 @@ func (qr *queueRing) Set(field string, size int32) *queueRing {
 		qr.capacity = size
 	case "pool":
 		if size <= 0 {
-			size = 12
+			size = 20
 		}
 		qr.pool_size = size
 	case "channle":
 		if size <= 0 {
-			size = 2
+			size = 8
 		}
-		qr.ch_write = make(chan []int32, size)
+		qr.chan_writer = make(chan uint8, size)
 	case "safe_read":
-		qr.reader.setKey(1)
+		qr.reader.key.set(1)
 
 	}
 	return qr
@@ -91,6 +98,7 @@ func (qr *queueRing) Reload() {
 			index_start: 0,
 			index_end:   0,
 			key:         0,
+			ch_go_w:     make(chan byte),
 		}
 	}
 }
@@ -99,7 +107,7 @@ func (qr *queueRing) Reload() {
 // write []byte to buffer.
 func (qr *queueRing) Write(b []byte) (int32, error) {
 	//TODO:testcode
-	test_begin = time.Now()
+	//test_begin = time.Now()
 
 	// first we need to apple a writer pointer.
 	pit, ret := qr.apply(int32(len(b)))
@@ -108,13 +116,14 @@ func (qr *queueRing) Write(b []byte) (int32, error) {
 	//test_print_line("write apply", elaps)
 
 	if ret < const_ret_success {
+		panic("Write")
 		return ret, errors.New("[QUEUE_ERROR][WRITTEN]")
 	}
 	// TODO delete code
-	if pit.getEnd() < 0 {
-		test_print_line("Write", pit.getStart(), pit.getEnd())
-		panic("Write")
-	}
+	//if pit.getEnd() < 0 {
+	//	test_print_line("Write", pit.getStart(), pit.getEnd())
+	//	panic("Write")
+	//}
 	// then pointer write data to buffer.
 	pit.write(b, qr)
 	//test_performance("", pit.write, b, qr)
@@ -181,16 +190,6 @@ func (qr *queueRing) Size() int {
 }
 
 //----------------------------------------writer go routine--------------------------------
-// generate serial number.
-func (qr *queueRing) serial() int32 {
-	serial := qr.serial_id.add(1)
-	if serial < const_splite_serial {
-		return serial
-	}
-	serial %= const_splite_serial
-	qr.serial_id.set(serial)
-	return serial
-}
 
 // allocate write start and end index.
 func (qr *queueRing) changeWritePos(size int32) {
@@ -210,97 +209,119 @@ func (qr *queueRing) changeWritePos(size int32) {
 // Make writer pointer routine.
 // Base on the length of data send by the user.
 func (qr *queueRing) writeRoutine() {
+	//TODO:testcode
+	//test_begin = time.Now()
+
+	// TODO:testcode
+	//elaps := time.Since(test_begin)
+
 	for {
 		select {
-		case id_size := <-qr.ch_write:
-			qr.allocate(id_size)
-
-			//time.Sleep(10 * time.Nanosecond)
-			//test_performance("allocate", qr.allocate, id_size)
+		case writer_idx := <-qr.chan_writer:
+			qr.allocate(writer_idx)
+			//if elaps > 120*time.Nanosecond {
+			//	test_print_line("elaps:", elaps)
+			//}
+			//test_performance("allocate", qr.allocate, writer_idx)
 		}
 	}
 }
 
-func (qr *queueRing) allocate(id_size []int32) {
-	//var size, serial int32 = 0, 0
-	//size = int32(id_size % const_splite_serial)
-	//serial = int32(id_size / const_splite_serial)
-	for {
-		var i int32 = 0
-		for ; i < qr.pool_size; i++ {
-			//test_print_line("writer:", qr.pool_writer[i].getKey())
-			if qr.pool_writer[i].empty() {
+func (qr *queueRing) allocate(writer_idx uint8) int32 {
 
-				qr.allocateWriter(qr.pool_writer[i], id_size)
-
-				//time.Sleep(10 * time.Nanosecond)
-				//test_print_line("SERIAL:", id_size[0], "KEY", qr.pool_writer[i].getKey())
-				return
-			}
-		}
-		time.Sleep(100 * time.Nanosecond)
+	cur_writer := qr.pool_writer[writer_idx]
+	if cur_writer == nil {
+		test_print_line("[QUEUE_ERROR][WRITER][NOT_FOUND]", writer_idx)
+		panic("[QUEUE_ERROR][WRITER][NOT_FOUND]")
 	}
-}
-
-func (qr *queueRing) getWriter(key int32) *pointer {
-
-	r := 0
-	for {
-		var i int32 = 0
-		for ; i < qr.pool_size; i++ {
-			if qr.pool_writer[i].getKey() == key {
-
-				return qr.pool_writer[i]
-			}
-			r++
-		}
-		time.Sleep(550 * time.Nanosecond)
-	}
-}
-
-// allocate writer to pool.
-func (qr *queueRing) allocateWriter(pit *pointer, id_size []int32) int32 {
-	size := id_size[1]
 	left := qr.getLeftSize()
-	if left < size {
-		test_print_line("[QUEUE_ERROR][ALLOCATE][NOT_ENOUGH_SPACE]", left, size, id_size, qr.pos_write, qr.pos_read, qr.ring)
+	if left < cur_writer.size {
+		test_print_line("[QUEUE_ERROR][ALLOCATE][NOT_ENOUGH_SPACE]", left, cur_writer.size, qr.pos_write, qr.pos_read, qr.ring)
 		return const_ret_writer_overflow
 	}
 
-	pos_start := qr.pos_write
-	pos_end := (pos_start + size) % qr.capacity
-	if pos_start < qr.pos_read {
-		test_print_line("[QUEUE_ERROR][ALLOCATE][SMALL qr.pos_read]", "start", pos_start, "read", qr.pos_read, "write", qr.pos_write, id_size)
+	cur_writer.index_start = qr.pos_write
+	cur_writer.index_end = (cur_writer.index_start + cur_writer.size) % qr.capacity
+	if cur_writer.index_start < qr.pos_read {
+		cur_writer.release()
+		test_print_line("[QUEUE_ERROR][ALLOCATE][SMALL qr.pos_read]", "start", cur_writer.index_start, "read", qr.pos_read, "write", qr.pos_write, writer_idx)
 		panic("allocate error")
 	}
-	if pos_start == pos_end {
-		test_print_line("[QUEUE_ERROR][ALLOCATE_FAIL][SMALL qr.pos_read]", "start", pos_start, "read", qr.pos_read, "write", qr.pos_write, id_size)
+	if cur_writer.index_start == cur_writer.index_end {
+		test_print_line("[QUEUE_ERROR][ALLOCATE_FAIL][SMALL qr.pos_read]", "start", cur_writer.index_start, "read", qr.pos_read, "write", qr.pos_write, writer_idx)
 		return const_ret_writer_overflow
 	}
-	pit.setStart(pos_start)
-	pit.setEnd(pos_end)
-	pit.setKey(id_size[0])
 
-	qr.changeWritePos(size)
+	qr.changeWritePos(cur_writer.size)
 
-	//	// TODO:TEST
-	//	elaps := time.Since(test_begin)
-	//	test_print_line("allocate use time", elaps)
-
+	cur_writer.key.set(const_scope_write)
+	//cur_writer.noticeWrite()
 	return const_ret_success
 }
 
+// get writer and its index.
+func (qr *queueRing) getWriterAndIdx() (*pointer, uint8) {
+	for {
+		for i, v := range qr.pool_writer {
+			if !v.empty() {
+				continue
+			}
+
+			// begin get written pointer
+			j := v.key.add(1)
+			if j != const_wrter_get_ok {
+				continue
+			}
+			return v, uint8(i)
+
+		}
+		time.Sleep(110 * time.Nanosecond)
+	}
+}
+
 // send to ch
-func (qr *queueRing) send(sed_s []int32) {
-	qr.ch_write <- sed_s
+func (qr *queueRing) send(idx uint8) {
+	//qr.ch_write <- sed_s
+	qr.chan_writer <- idx
 }
 
 func (qr *queueRing) apply(size int32) (IPointerWriter, int32) {
-	serial := qr.serial()
-	sed_s := []int32{serial, size}
-	qr.send(sed_s)
+	//serial := qr.serial()
+	//sed_s := []int32{serial, size}
+	//qr.send(sed_s)
 	//test_performance("write",qr.getWriter, serial)
-	pit := qr.getWriter(serial)
+
+WALK:
+	//TODO:testcode
+	//test_begin = time.Now()
+
+	pit, idx := qr.getWriterAndIdx()
+	pit.setSize(size)
+	qr.send(idx)
+	// TODO:testcode
+	//elaps := time.Since(test_begin)
+
+	time.Sleep(110 * time.Nanosecond)
+	for {
+		if pit.key.get() >= const_scope_write {
+			break
+		}
+
+		if pit.empty() {
+			goto WALK
+		}
+		time.Sleep(310 * time.Nanosecond)
+		//select {
+		//case <-pit.ch_go_w:
+		//	return pit, const_ret_success
+		//}
+	}
+	// TODO:testcode
+	//if elaps > 2000*time.Nanosecond {
+	//	test_duration++
+	//	test_print_line("write apply", elaps, test_duration)
+	//}
+
 	return pit, const_ret_success
 }
 
@@ -370,8 +391,6 @@ func (qr *queueRing) getCanReadSize() int32 {
 // ========================================read write pointer =============================================
 
 type IPointerSerial interface {
-	getKey() int32
-	setKey(int32)
 	getSize() int32
 	setSize(int32)
 	empty() bool
@@ -404,16 +423,9 @@ type pointer struct {
 	index_start int32
 	index_end   int32
 	size        int32
-	key         int32 //this is important. it will be used to decide which goroutine can gets the pointer
-	buffer      *bytes.Buffer
-}
-
-func (pit *pointer) getKey() int32 {
-	return pit.key
-}
-
-func (pit *pointer) setKey(key int32) {
-	pit.key = key
+	key         severity //this is important. it will be used to decide which goroutine can gets the pointer
+	//buffer      *bytes.Buffer
+	ch_go_w chan byte
 }
 
 func (pit *pointer) getSize() int32 {
@@ -441,6 +453,11 @@ func (pit *pointer) getStart() int32 {
 }
 func (pit *pointer) getEnd() int32 {
 	return pit.index_end
+}
+
+// notice other goroutine pointer to write data.
+func (pit *pointer) noticeWrite() {
+	pit.ch_go_w <- 1
 }
 
 func (pit *pointer) release() {
@@ -483,7 +500,8 @@ func (pit *pointer) read(size int32, qr *queueRing) []byte {
 		qr.buffer_read.Write(s2)
 		return qr.buffer_read.Bytes()
 	}
-	if pit.getKey() == 0 {
+
+	if pit.key == 1 {
 		qr.buffer_read.Reset()
 		qr.buffer_read.Write(s1)
 		return qr.buffer_read.Bytes()
@@ -516,7 +534,10 @@ func test_performance(str string, callback interface{}, args ...interface{}) {
 	v.Call(vargs)
 	// TODO:testcode
 	elaps := time.Since(test_begin)
-	test_print_line(str, elaps)
+	test_duration += elaps
+	if elaps > 1000*time.Nanosecond {
+		test_print_line(str, elaps, "total", test_duration/10000)
+	}
 
 	//fmt.Print("\tReturn values: ", vrets)
 }

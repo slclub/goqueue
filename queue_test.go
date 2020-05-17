@@ -32,7 +32,10 @@ func pushMessageToQueue(t *testing.T, ring *queueRing, how_times int, data strin
 		ring.WriteString(data)
 	}
 	elaps := time.Since(t1)
-	fmt.Println(data, elaps, ring.Size(), "test_duration", test_duration)
+	fmt.Println("run:", elaps, "size:", ring.Size(), "qr.pos_write:", ring.pos_write, "read:", ring.pos_read)
+	//for i, v := range ring.pool_writer {
+	//	fmt.Println("---------", v.size, "index:", i, "key", v.key.get(), v.index_start)
+	//}
 }
 
 func pullMessageFromQueue(t *testing.T, ring *queueRing) {
@@ -50,7 +53,7 @@ func pullMessageFromQueue(t *testing.T, ring *queueRing) {
 		}
 		//if s != "" {
 		//	elaps := time.Since(t1)
-		//	fmt.Println("TEMP_D:", elaps, "[REV_LEN]", rev_len, "SIZE:", ring.Size())
+		//	fmt.Println("TEMP_D:", elaps, "[REV_LEN]", rev_len, "pos:", ring.pos_read, ring.pos_write)
 		//	//fmt.Println("[GO ROUTINE]READ[", ring.size(), "]MSG[", s, "]DURATION[", elaps, "]")
 		//}
 		//fmt.Println("S:", s, "RET:", ret, "ERR:", err)
