@@ -12,16 +12,18 @@ It is't an single server. It is like a plugin.
 Only run on the go environment. Go version is 1.11+ that is better.
 
 - Download with go get
+
 `$ go get -u github.com/slclub/goqueue`
 
 - go mod
+
 `$ go mod download`
 
 ### Quick Start
 
 Let's go straight to show the code.
 
-```
+```go
 import (
     "fmt"
     "github.com/slclub/goqueue"
