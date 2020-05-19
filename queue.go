@@ -23,6 +23,18 @@ var test_duration time.Duration = 0
 //var test_duration int = 0
 
 // ========================================queue define start=============================================
+
+// queueRing implement this interface.
+type Ring interface {
+	Write(b []byte) (int32, error)
+	WriteString(s string) (int32, error)
+	Read(int32) []byte
+	ReadString(int32) string
+	Set(string, int32)
+	Reload()
+	Size() int
+}
+
 type queueRing struct {
 	buffer      []byte        // memery buffer.
 	buffer_read *bytes.Buffer // read to default
@@ -60,7 +72,7 @@ func NewQueue() *queueRing {
 // Set queue running paramters.
 // @field  capacity define the buffer size.
 // @field  pool_size define the writer pool size. Numbers of concurrent wirtes.
-func (qr *queueRing) Set(field string, size int32) *queueRing {
+func (qr *queueRing) Set(field string, size int32) {
 	field = strings.ToLower(field)
 	switch field {
 	case "capacity":
@@ -82,7 +94,7 @@ func (qr *queueRing) Set(field string, size int32) *queueRing {
 		qr.reader.key.set(1)
 
 	}
-	return qr
+	return
 }
 
 // After set the paramters. Reapply memeory.

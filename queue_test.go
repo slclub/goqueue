@@ -11,6 +11,7 @@ var all_send_len = 0
 
 func TestQueue(t *testing.T) {
 	ring := NewQueue()
+	var ch_over = make(chan int)
 	//ring.Set("capacity", 1024*1024)
 	//ring.Reload()
 	log_line1 := "111 testing log data use queueRing 111"
@@ -20,9 +21,21 @@ func TestQueue(t *testing.T) {
 		go pushMessageToQueue(t, ring, 1000, log_line1)
 	}
 
-	go pullMessageFromQueue(t, ring)
+	go pullMessageFromQueue(t, ring, ch_over)
 
-	time.Sleep(30 * time.Second)
+	for {
+		exit, _ := <-ch_over
+		if exit > 0 {
+			return
+		}
+	}
+
+}
+
+func TestQueueInterface(t *testing.T) {
+	var ring Ring
+	ring = NewQueue()
+	fmt.Println("Invoke Size", ring.Size())
 }
 
 // ==================================================================================
@@ -38,7 +51,7 @@ func pushMessageToQueue(t *testing.T, ring *queueRing, how_times int, data strin
 	//}
 }
 
-func pullMessageFromQueue(t *testing.T, ring *queueRing) {
+func pullMessageFromQueue(t *testing.T, ring *queueRing, ch_over chan int) {
 	t1 := time.Now()
 	elaps := time.Since(t1)
 	rev_len := 0
@@ -61,4 +74,5 @@ func pullMessageFromQueue(t *testing.T, ring *queueRing) {
 	elaps = time.Since(t1)
 	fmt.Println(all_str)
 	fmt.Println("D:", elaps, "REV:", rev_len, "SIZE:", ring.Size())
+	ch_over <- 1
 }
