@@ -254,7 +254,8 @@ func (qr *queueRing) allocate(writer_idx uint8) int32 {
 
 	cur_writer.index_start = qr.pos_write
 	cur_writer.index_end = (cur_writer.index_start + cur_writer.size) % qr.capacity
-	if cur_writer.index_start < qr.pos_read {
+	valid_start := cur_writer.index_start + qr.ring.get()*qr.capacity
+	if valid_start < qr.pos_read {
 		cur_writer.release()
 		test_print_line("[QUEUE_ERROR][ALLOCATE][SMALL qr.pos_read]", "start", cur_writer.index_start, "read", qr.pos_read, "write", qr.pos_write, writer_idx)
 		panic("allocate error")
