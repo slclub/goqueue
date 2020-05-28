@@ -1,7 +1,7 @@
 package goqueue
 
 import (
-	"encoding/binary"
+	//"encoding/binary"
 	"sync/atomic"
 )
 
@@ -40,17 +40,17 @@ func (s *severity) add(val int32) int32 {
 	return new_int
 }
 
-func byteToString(b []byte) string {
-	// TODO \0 proplem
-	return string(b)
-}
+//func byteToString(b []byte) string {
+//	// TODO \0 proplem
+//	return string(b)
+//}
 
-func Int32ToBytes(i int32) []byte {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint32(buf, uint32(i))
-	return buf
-}
-
-func BytesToInt32(buf []byte) int32 {
-	return int32(binary.BigEndian.Uint32(buf))
-}
+//func Int32ToBytes(i int32) []byte {
+//	buf := make([]byte, 8)
+//	binary.BigEndian.PutUint32(buf, uint32(i))
+//	return buf
+//}
+//
+//func BytesToInt32(buf []byte) int32 {
+//	return int32(binary.BigEndian.Uint32(buf))
+//}

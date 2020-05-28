@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/slclub/utils/bytesconv"
 	"reflect"
 	"runtime"
 	"strings"
@@ -128,7 +129,7 @@ func (qr *queueRing) Write(b []byte) (int32, error) {
 	//test_print_line("write apply", elaps)
 
 	if ret < const_ret_success {
-		panic("Write")
+		//panic("Write")
 		return ret, errors.New("[QUEUE_ERROR][WRITTEN]")
 	}
 	// TODO delete code
@@ -143,7 +144,7 @@ func (qr *queueRing) Write(b []byte) (int32, error) {
 }
 
 func (qr *queueRing) WriteString(s string) (int32, error) {
-	return qr.Write([]byte(s))
+	return qr.Write(bytesconv.StringToBytes(s))
 }
 
 //
@@ -158,7 +159,7 @@ func (qr *queueRing) Read(size int32) []byte {
 
 // read data convert to string
 func (qr *queueRing) ReadString(size int32) string {
-	return byteToString(qr.Read(size))
+	return bytesconv.BytesToString(qr.Read(size))
 }
 
 // ----------------------------------------------- out api over ----------------------------------------
@@ -248,12 +249,16 @@ func (qr *queueRing) allocate(writer_idx uint8) int32 {
 	}
 	left := qr.getLeftSize()
 	if left < cur_writer.size {
-		test_print_line("[QUEUE_ERROR][ALLOCATE][NOT_ENOUGH_SPACE]", left, cur_writer.size, qr.pos_write, qr.pos_read, qr.ring)
+		// should wait read
+		// reset key of writer can be used again.
+		cur_writer.release()
+		//test_print_line("[QUEUE_ERROR][ALLOCATE][NOT_ENOUGH_SPACE]", left, cur_writer.size, qr.pos_write, qr.pos_read, qr.ring)
 		return const_ret_writer_overflow
 	}
 
 	cur_writer.index_start = qr.pos_write
 	cur_writer.index_end = (cur_writer.index_start + cur_writer.size) % qr.capacity
+	cur_writer.setRing(qr.ring.get())
 	valid_start := cur_writer.index_start + qr.ring.get()*qr.capacity
 	if valid_start < qr.pos_read {
 		cur_writer.release()
@@ -261,6 +266,7 @@ func (qr *queueRing) allocate(writer_idx uint8) int32 {
 		panic("allocate error")
 	}
 	if cur_writer.index_start == cur_writer.index_end {
+		cur_writer.release()
 		test_print_line("[QUEUE_ERROR][ALLOCATE_FAIL][SMALL qr.pos_read]", "start", cur_writer.index_start, "read", qr.pos_read, "write", qr.pos_write, writer_idx)
 		return const_ret_writer_overflow
 	}
@@ -276,6 +282,7 @@ func (qr *queueRing) allocate(writer_idx uint8) int32 {
 func (qr *queueRing) getWriterAndIdx() (*pointer, uint8) {
 	for {
 		for i, v := range qr.pool_writer {
+			//test_print_line("write apply", i, v, v.getSize(), v.key.get())
 			if !v.empty() {
 				continue
 			}
@@ -369,11 +376,17 @@ func (qr *queueRing) changeReaderPos(size int32) {
 
 // get can read size.
 func (qr *queueRing) getCanReadSize() int32 {
-	var min_start int32 = 0
+	var min_start int32 = -1
 	for _, v := range qr.pool_writer {
 		j := v.getStart()
-		j += (qr.capacity - 1) * qr.ring.get()
-		if j == 0 {
+		// TODO:DELETE
+		//test_print_line("BEFORE getCanReadSize: TMP_W:", v.getStart(), v.getEnd(), v.getRing(), v.getSize(), "READER:", qr.pos_read, v)
+
+		j += (qr.capacity - 1) * v.getRing()
+		if v.getSize() == 0 {
+			continue
+		}
+		if v.getStart() == 0 && v.getEnd() == 0 {
 			continue
 		}
 		if min_start == 0 {
@@ -382,9 +395,11 @@ func (qr *queueRing) getCanReadSize() int32 {
 		if j < min_start {
 			min_start = j
 		}
+		// TODO:DELETE
+		//test_print_line("getCanReadSize:", "TMP_WRITER", j, "READER:", qr.pos_read, "RING:", v.getRing(), v)
 	}
 
-	if min_start == 0 {
+	if min_start == -1 {
 		min_start = qr.pos_write + (qr.capacity-1)*qr.ring.get()
 	}
 
@@ -392,6 +407,9 @@ func (qr *queueRing) getCanReadSize() int32 {
 	//if min_start != qr.pos_read {
 	//	test_print_line("getCanReadSize:", min_start, qr.pos_read)
 	//}
+	// TO SURE:
+	// 出现的情况 在ring 改变的时候，其中一个写指针可能会出现.
+	// This happens when the ring value changes
 	if min_start < qr.pos_read {
 		return 0
 		//test_print_line("getCanReadSize:", min_start, qr.pos_read)
@@ -422,6 +440,8 @@ type IPointerWriter interface {
 	IPointerIndex
 	write([]byte, *queueRing) (int32, error)
 	release()
+	getRing() int32
+	setRing(int32)
 }
 
 // reader interface
@@ -439,6 +459,7 @@ type pointer struct {
 	key         severity //this is important. it will be used to decide which goroutine can gets the pointer
 	//buffer      *bytes.Buffer
 	ch_go_w chan byte
+	ring    int32
 }
 
 func (pit *pointer) getSize() int32 {
@@ -468,6 +489,14 @@ func (pit *pointer) getEnd() int32 {
 	return pit.index_end
 }
 
+func (pit *pointer) getRing() int32 {
+	return pit.ring
+}
+
+func (pit *pointer) setRing(ring int32) {
+	pit.ring = ring
+}
+
 // notice other goroutine pointer to write data.
 func (pit *pointer) noticeWrite() {
 	pit.ch_go_w <- 1
@@ -478,6 +507,7 @@ func (pit *pointer) release() {
 	pit.size = 0
 	pit.setStart(0)
 	pit.setEnd(0)
+	pit.setRing(0)
 }
 
 func (pit *pointer) write(b []byte, qr *queueRing) (int32, error) {
@@ -496,6 +526,7 @@ func (pit *pointer) write(b []byte, qr *queueRing) (int32, error) {
 func (pit *pointer) read(size int32, qr *queueRing) []byte {
 	pos_s, pos_e := qr.getReadPos(&size)
 	if size == 0 {
+		//test_print_line("[RING_READER][NO_DATA_TO_READ]", qr.ring, "READ_START:", pos_s, "READ_END:", pos_e)
 		return nil
 		//test_print_line("pointer read", size)
 	}
@@ -523,9 +554,7 @@ func (pit *pointer) read(size int32, qr *queueRing) []byte {
 }
 
 // ========================================queue test func=============================================
-func test_log(s string) {
-	fmt.Println(s)
-}
+
 func test_print_line(args ...interface{}) {
 	_, _, line, _ := runtime.Caller(1)
 	fmt.Println("LINE:", line, args)
