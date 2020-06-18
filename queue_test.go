@@ -28,18 +28,19 @@ func TestQueue(t *testing.T) {
 	log_line1 := "111 testing log data use queueRing 111"
 	//log_line1 += log_line1
 	for i := 0; i < 10; i++ {
-		all_send_len += len(log_line1) * 10000
-		go pushMessageToQueue(t, ring, 10000, log_line1)
+		all_send_len += len(log_line1) * 1000
+		go pushMessageToQueue(t, ring, 1000, log_line1)
 	}
 
 	go pullMessageFromQueue(t, ring, ch_over)
 
-	for {
-		exit, _ := <-ch_over
-		if exit > 0 {
-			return
-		}
-	}
+	//for {
+	//	exit, _ := <-ch_over
+	//	if exit > 0 {
+	//		return
+	//	}
+	//}
+	time.Sleep(5 * time.Second)
 
 }
 

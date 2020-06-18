@@ -173,7 +173,7 @@ func (qr *queueRing) getLeftSize() int32 {
 // just write data to buffer.
 // it will be run by writer pointer.
 func (qr *queueRing) write(b []byte, start_idx int32, end_idx int32) {
-	if end_idx > start_idx {
+	if end_idx >= start_idx {
 		s1 := qr.buffer[start_idx:end_idx]
 		copy(s1, b)
 		return
@@ -182,6 +182,7 @@ func (qr *queueRing) write(b []byte, start_idx int32, end_idx int32) {
 	s1 := qr.buffer[start_idx:qr.capacity]
 	s2 := qr.buffer[0:end_idx]
 	copy(s1, b)
+	test_print_line("[QUEUE_ERROR][WRITER][JUMP_CAPACITY]", start_idx, end_idx)
 	copy(s2, b[:end_idx])
 }
 
@@ -263,11 +264,17 @@ func (qr *queueRing) allocate(writer_idx uint8) int32 {
 	if valid_start < qr.pos_read {
 		cur_writer.release()
 		test_print_line("[QUEUE_ERROR][ALLOCATE][SMALL qr.pos_read]", "start", cur_writer.index_start, "read", qr.pos_read, "write", qr.pos_write, writer_idx)
-		panic("allocate error")
+		//panic("allocate error")
+		return const_ret_writer_overflow
 	}
 	if cur_writer.index_start == cur_writer.index_end {
+		//test_print_line("[QUEUE_ERROR][ALLOCATE_FAIL][SMALL qr.pos_read]", "start", cur_writer.index_start, "read", qr.pos_read, "write", qr.pos_write, writer_idx)
 		cur_writer.release()
-		test_print_line("[QUEUE_ERROR][ALLOCATE_FAIL][SMALL qr.pos_read]", "start", cur_writer.index_start, "read", qr.pos_read, "write", qr.pos_write, writer_idx)
+		return const_ret_writer_overflow
+	}
+	if cur_writer.index_start > cur_writer.index_end && qr.ring.get() == 1 {
+		test_print_line("[QUEUE_ERROR][ALLOCATE_FAIL][write start bigger than pos end]", "start", cur_writer.index_start, "end", cur_writer.index_end, "size:", cur_writer.size, "read", qr.pos_read, "write", qr.pos_write)
+		cur_writer.release()
 		return const_ret_writer_overflow
 	}
 
@@ -369,7 +376,7 @@ func (qr *queueRing) changeReaderPos(size int32) {
 	}
 
 	if qr.ring < 0 {
-		test_print_line(" changeReaderPos", size)
+		test_print_line(" changeReaderPos", "read size", size, "read_pos", qr.pos_read)
 		panic("[QUEUE_ERROR][ALLOCATE_READ][RING_OVERFLOW]")
 	}
 }
@@ -471,7 +478,7 @@ func (pit *pointer) setSize(size int32) {
 }
 
 func (pit *pointer) empty() bool {
-	return pit.key == 0
+	return pit.key == severity(0)
 }
 
 func (pit *pointer) setStart(pos int32) {
