@@ -182,7 +182,7 @@ func (qr *queueRing) write(b []byte, start_idx int32, end_idx int32) {
 	s1 := qr.buffer[start_idx:qr.capacity]
 	s2 := qr.buffer[0:end_idx]
 	copy(s1, b)
-	test_print_line("[QUEUE_ERROR][WRITER][JUMP_CAPACITY]", start_idx, end_idx)
+	//test_print_line("[QUEUE_ERROR][WRITER][JUMP_CAPACITY]", start_idx, end_idx)
 	copy(s2, b[:end_idx])
 }
 
